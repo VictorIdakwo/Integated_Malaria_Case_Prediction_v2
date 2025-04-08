@@ -1,0 +1,2 @@
+Date,Patient ID,Symptoms,Predicted Case,Actual Case
+4/7/2025,001DDD,"[[1, 1, 1, 1, 1, 1, 0, 0, 0, 0]]",Positive (1),Positive (1)
