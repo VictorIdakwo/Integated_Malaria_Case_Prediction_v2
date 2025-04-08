@@ -15,8 +15,8 @@ st.title("Non-Clinical Malaria Prediction")
 
 # File paths
 SHAPEFILE_PATH = "./ward/Wards.shp"
-MODEL_PATH = "Models/Non Clinical/models/random_forest.joblib"
-SCALER_PATH = "Models/Non Clinical/models/scaler_rf.joblib"
+MODEL_PATH = "models/Non Clinical/models/random_forest.joblib"
+SCALER_PATH = "models/Non Clinical/models/scaler_rf.joblib"
 
 # Cached model and scaler loading
 @st.cache_resource
