@@ -18,6 +18,7 @@ SHAPEFILE_PATH = "./ward/Wards.shp"
 MODEL_PATH = "models/Non Clinical/models/random_forest.joblib"
 SCALER_PATH = "models/Non Clinical/models/scaler_rf.joblib"
 
+
 # Cached model and scaler loading
 @st.cache_resource
 def load_model():
