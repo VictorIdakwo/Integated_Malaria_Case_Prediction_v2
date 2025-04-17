@@ -1,180 +1,128 @@
-import streamlit as st
-import numpy as np
-import pandas as pd
-import joblib
 import os
+import sys
+import streamlit as st
+import pandas as pd
+import torch
+import uuid
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv
-from datetime import datetime
-import gymnasium as gym  # Updated to Gymnasium
+from stable_baselines3.common.env_util import make_vec_env
+
+# Patch torch to prevent Streamlit path inspection crash
+if 'torch' in sys.modules:
+    torch.__path__ = []
+
+# Prevent event loop issue (Streamlit + asyncio + Python 3.12)
+import asyncio
+try:
+    asyncio.get_running_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
+# Set paths
+MODEL_PATH = "ppo_malaria_model"
+CSV_PATH = "malaria_prediction_results.csv"
+
+# Dummy symptoms and environment setup
+SYMPTOMS = ['fever', 'chills', 'headache', 'nausea', 'vomiting', 'diarrhea']
+NUM_FEATURES = len(SYMPTOMS)
+
+# Create a dummy environment for PPO
 from gymnasium import spaces
+import numpy as np
+import gymnasium as gym
 
-st.title("Clinical Malaria Prediction")
-
-# File paths
-MODEL_PATH = 'models/ppo_malaria'  # Ensure it matches the training script
-SCALER_PATH = 'models/scaler.pkl'
-DATA_PATH = 'test_records.csv'
-
-# Load trained PPO model and scaler
-model = PPO.load(MODEL_PATH)
-scaler = joblib.load(SCALER_PATH)
-
-# Define symptom features
-features = ['chill_cold', 'headache', 'fever', 'generalized body pain',
-            'abdominal pain', 'Loss of appetite', 'joint pain', 'vomiting',
-            'nausea', 'diarrhea']
-
-# Load existing data or create an empty DataFrame
-def load_data():
-    if os.path.exists(DATA_PATH):
-        return pd.read_csv(DATA_PATH)
-    else:
-        return pd.DataFrame(columns=['Date', 'Patient ID', 'Symptoms', 'Predicted Case', 'Actual Case'])
-
-def save_data(new_entry):
-    df = load_data()
-    df = pd.concat([df, new_entry], ignore_index=True)
-    df.to_csv(DATA_PATH, index=False)
-
-# Custom Gymnasium Environment for Malaria Prediction
 class MalariaEnv(gym.Env):
     def __init__(self):
-        super(MalariaEnv, self).__init__()
-        self.observation_space = spaces.Box(low=-1, high=1, shape=(10,), dtype=np.float32)  # Match trained model
-        self.action_space = spaces.Discrete(2)  # Binary classification (0=Negative, 1=Positive)
-        self.state = np.zeros(10, dtype=np.float32)
-        self.done = False
+        super().__init__()
+        self.observation_space = spaces.Box(low=0, high=1, shape=(NUM_FEATURES,), dtype=np.float32)
+        self.action_space = spaces.Discrete(2)  # 0: no malaria, 1: malaria
+        self.state = np.zeros(NUM_FEATURES)
+        self.current_label = 0
 
-    def reset(self, seed=None, options=None):
-        self.state = np.random.uniform(-1, 1, size=(10,)).astype(np.float32)  # Match trained model
-        self.done = False
-        return self.state, {}  # Gymnasium requires returning (obs, info)
+    def reset(self, *, seed=None, options=None):
+        self.state = np.random.randint(0, 2, size=NUM_FEATURES).astype(np.float32)
+        self.current_label = np.random.randint(0, 2)
+        return self.state, {}
 
     def step(self, action):
-        reward = 1 if (action == 1 and np.sum(self.state) > 5) else -1  # Reward logic
-        self.done = True
-        return self.state, reward, self.done, False, {}  # Gymnasium requires (obs, reward, done, truncated, info)
+        reward = 1 if action == self.current_label else -1
+        done = True
+        return self.state, reward, done, False, {}
 
-    def render(self, mode='human'):
-        pass
+# Load or train PPO model
+def load_or_train_model():
+    if os.path.exists(f"{MODEL_PATH}/success_model.zip"):
+        return PPO.load(f"{MODEL_PATH}/success_model", env=make_vec_env(MalariaEnv, n_envs=1))
+    else:
+        env = make_vec_env(MalariaEnv, n_envs=1)
+        model = PPO("MlpPolicy", env, verbose=0)
+        model.learn(total_timesteps=2000)
+        model.save(f"{MODEL_PATH}/success_model")
+        return model
 
-    def close(self):
-        pass
+model = load_or_train_model()
 
-# Function to retrain the model
-def retrain_model():
-    df = load_data()
+# Load previous results
+def load_results():
+    if os.path.exists(CSV_PATH):
+        return pd.read_csv(CSV_PATH)
+    else:
+        return pd.DataFrame(columns=["Patient ID", "Date", *SYMPTOMS, "Predicted", "Actual"])
+
+results_df = load_results()
+
+# --- Streamlit UI ---
+st.title("🦟 Clinical Malaria Prediction (Reinforcement Learning)")
+
+st.subheader("Enter Symptoms for a New Patient")
+patient_id = st.text_input("Patient ID", str(uuid.uuid4())[:8])
+selected_symptoms = st.multiselect("Select observed symptoms", SYMPTOMS)
+actual_case = st.selectbox("Clinically confirmed?", ["Yes", "No"])
+submit = st.button("Predict and Save")
+
+if submit:
+    # Convert input
+    obs = np.array([1 if symptom in selected_symptoms else 0 for symptom in SYMPTOMS], dtype=np.float32)
     
-    if len(df) >= 10:  # Retrain after every 10 samples
-        # Convert Symptoms column from string to list of numbers
-        X = np.array([eval(symptoms) for symptoms in df['Symptoms']])  # Convert from string to list
-        X = np.squeeze(X)  # Remove extra dimensions if present
+    # Predict
+    predicted_action, _ = model.predict(obs)
+    predicted = "Yes" if predicted_action == 1 else "No"
 
-        # Ensure X is 2D with shape (n_samples, n_features)
-        if X.ndim == 1:
-            X = X.reshape(1, -1)
+    # Save record
+    new_row = {
+        "Patient ID": patient_id,
+        "Date": pd.Timestamp.now().strftime("%Y-%m-%d"),
+        **{symptom: 1 if symptom in selected_symptoms else 0 for symptom in SYMPTOMS},
+        "Predicted": predicted,
+        "Actual": actual_case
+    }
+    results_df = pd.concat([results_df, pd.DataFrame([new_row])], ignore_index=True)
+    results_df.to_csv(CSV_PATH, index=False)
 
-        X_df = pd.DataFrame(X, columns=features)  # Convert to DataFrame
-        X_scaled = scaler.transform(X_df)  # Scale features
+    st.success(f"Prediction saved: **{predicted}**")
 
-        # Set up RL environment
-        env = DummyVecEnv([lambda: MalariaEnv()])
-        model.set_env(env)
-        model.learn(total_timesteps=1000)
+    # Optional: model retraining
+    try:
+        model.set_env(make_vec_env(MalariaEnv, n_envs=1))
+        model.learn(total_timesteps=500)
+        model.save(f"{MODEL_PATH}/success_model")
+        st.info("Model retrained with new experience.")
+    except Exception as e:
+        st.error(f"Retraining failed: {e}")
 
-        model.save(MODEL_PATH)
-        st.success("Model retrained successfully!")
+# --- Results Section ---
+st.subheader("📊 Daily Prediction Records")
+date_filter = st.date_input("Filter by Date", value=None)
+id_filter = st.text_input("Filter by Patient ID")
 
-# Initialize session state
-if 'patient_id' not in st.session_state:
-    st.session_state['patient_id'] = None
-    st.session_state['features'] = None
-    st.session_state['predicted_case'] = None
+filtered_df = results_df.copy()
+if date_filter:
+    filtered_df = filtered_df[filtered_df["Date"] == pd.to_datetime(date_filter).strftime("%Y-%m-%d")]
+if id_filter:
+    filtered_df = filtered_df[filtered_df["Patient ID"].str.contains(id_filter)]
 
-# Streamlit Sidebar
-st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to", ["Symptom Input", "Test Result & Download Data"])
+st.dataframe(filtered_df)
 
-# ---- PAGE 1: SYMPTOM INPUT ----
-if page == "Symptom Input":
-    st.title("Malaria Prediction - RL Model")
-    st.write("Select your symptoms and get a prediction.")
-
-    # Patient ID Input
-    patient_id = st.text_input("Patient ID", "")
-
-    # Symptom Selection using Yes/No Buttons
-    selected_features = {}
-    for feature in features:
-        response = st.radio(f"Do you have {feature.replace('_', ' ')}?", ["No", "Yes"], horizontal=True)
-        selected_features[feature] = 1 if response == "Yes" else 0
-
-    if st.button("Predict Malaria"):
-        if not patient_id:
-            st.warning("Please enter a Patient ID.")
-        else:
-            # Convert selected symptoms to numeric array
-            feature_values = np.array([selected_features[f] for f in features]).reshape(1, -1)
-            feature_df = pd.DataFrame(feature_values, columns=features)  # Convert to DataFrame
-            scaled_values = scaler.transform(feature_df)  # Ensure correct input format
-
-            # RL Model Predicts Action
-            action, _ = model.predict(scaled_values)
-            predicted_case = "Positive (1)" if action[0] == 1 else "Negative (0)"
-
-            # Store patient data in session state
-            st.session_state['patient_id'] = patient_id
-            st.session_state['features'] = feature_values.tolist()
-            st.session_state['predicted_case'] = predicted_case
-
-            st.write(f"### Predicted Case: {predicted_case}")
-            st.info("Please proceed to a clinic for testing and enter your result on the next page.")
-
-# ---- PAGE 2: TEST RESULT & DOWNLOAD DATA ----
-if page == "Test Result & Download Data":
-    st.title("Enter Actual Test Result & Download Data")
-
-    if st.session_state['patient_id'] is None:
-        st.warning("Please go to the first page and enter symptoms first.")
-    else:
-        st.write(f"Patient ID: {st.session_state['patient_id']}")
-        st.write(f"Predicted Case: {st.session_state['predicted_case']}")
-
-        # Actual result from clinic
-        actual_cases = st.radio("Clinic Test Result", ["Positive (1)", "Negative (0)"])
-
-        if st.button("Submit & Save Test Record"):
-            new_entry = pd.DataFrame({
-                'Date': [datetime.today().strftime('%Y-%m-%d')],
-                'Patient ID': [st.session_state['patient_id']],
-                'Symptoms': [str(st.session_state['features'])],
-                'Predicted Case': [st.session_state['predicted_case']],
-                'Actual Case': [actual_cases]
-            })
-            save_data(new_entry)
-            retrain_model()
-            st.success("Test result saved and model retrained successfully!")
-
-    # Data Filtering & Download
-    st.subheader("Download Test Records")
-    df = load_data()
-
-    if df.empty:
-        st.warning("No records found.")
-    else:
-        filter_option = st.radio("Filter By:", ["Date", "Patient ID"], horizontal=True)
-
-        if filter_option == "Date":
-            selected_date = st.date_input("Select Date")
-            filtered_df = df[df['Date'] == selected_date.strftime('%Y-%m-%d')]
-        else:
-            selected_patient = st.text_input("Enter Patient ID")
-            filtered_df = df[df['Patient ID'] == selected_patient]
-
-        if not filtered_df.empty:
-            st.dataframe(filtered_df)
-            csv = filtered_df.to_csv(index=False).encode('utf-8')
-            st.download_button("Download Data", csv, "filtered_data.csv", "text/csv")
-        else:
-            st.warning("No matching records found.")
+# Download option
+csv = filtered_df.to_csv(index=False).encode()
+st.download_button("Download CSV", csv, "malaria_predictions_filtered.csv", "text/csv")
