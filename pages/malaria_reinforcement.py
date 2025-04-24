@@ -12,8 +12,8 @@ from gymnasium import spaces
 st.title("Clinical Malaria Prediction")
 
 # File paths
-MODEL_PATH = 'models/ppo_malaria'  # Ensure it matches the training script
-SCALER_PATH = 'models/scaler.pkl'
+MODEL_PATH = 'models/ppo_malaria2'  # Ensure it matches the training script
+SCALER_PATH = 'models/scaler2.pkl'
 DATA_PATH = 'test_records.csv'
 
 # Load trained PPO model and scaler
