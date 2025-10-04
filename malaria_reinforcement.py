@@ -66,31 +66,45 @@ class MalariaEnv(gym.Env):
 def retrain_model():
     df = load_data()
     
-    if len(df) >= 10:  # Retrain after every 10 samples
-        # Convert Symptoms column from string to list of numbers
-        X = np.array([eval(symptoms) for symptoms in df['Symptoms']])  # Convert from string to list
-        X = np.squeeze(X)  # Remove extra dimensions if present
+    # Only retrain at specific intervals (10, 20, 30, etc.) to prevent continuous retraining
+    if len(df) >= 10 and len(df) % 10 == 0:  # Retrain every 10 samples
+        try:
+            # Convert Symptoms column from string to list of numbers
+            X = np.array([eval(symptoms) for symptoms in df['Symptoms']])  # Convert from string to list
+            X = np.squeeze(X)  # Remove extra dimensions if present
 
-        # Ensure X is 2D with shape (n_samples, n_features)
-        if X.ndim == 1:
-            X = X.reshape(1, -1)
+            # Ensure X is 2D with shape (n_samples, n_features)
+            if X.ndim == 1:
+                X = X.reshape(1, -1)
 
-        X_df = pd.DataFrame(X, columns=features)  # Convert to DataFrame
-        X_scaled = scaler.transform(X_df)  # Scale features
+            X_df = pd.DataFrame(X, columns=features)  # Convert to DataFrame
+            X_scaled = scaler.transform(X_df)  # Scale features
 
-        # Set up RL environment
-        env = DummyVecEnv([lambda: MalariaEnv()])
-        model.set_env(env)
-        model.learn(total_timesteps=1000)
+            # Set up RL environment with reduced timesteps to prevent memory issues
+            env = DummyVecEnv([lambda: MalariaEnv()])
+            model.set_env(env)
+            
+            # Reduced timesteps to prevent segmentation fault
+            model.learn(total_timesteps=500)  # Reduced from 1000
 
-        model.save(MODEL_PATH)
-        st.success("Model retrained successfully!")
+            model.save(MODEL_PATH)
+            
+            # Clean up resources
+            env.close()
+            del env
+            
+            st.success(f"Model retrained successfully after {len(df)} samples!")
+            
+        except Exception as e:
+            st.error(f"Error during retraining: {str(e)}")
+            st.warning("Prediction will continue with the existing model.")
 
 # Initialize session state
 if 'patient_id' not in st.session_state:
     st.session_state['patient_id'] = None
     st.session_state['features'] = None
     st.session_state['predicted_case'] = None
+    st.session_state['last_retrain_count'] = 0  # Track last retrain to avoid duplicate retrains
 
 # Streamlit Sidebar
 st.sidebar.title("Navigation")
