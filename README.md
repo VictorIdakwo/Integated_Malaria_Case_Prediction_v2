@@ -92,39 +92,47 @@ streamlit run Home.py
 - Nausea
 - Diarrhea
 
-## 🔒 Online Retraining Options
+## 🔒 Online Retraining: Streamlit Cloud Limitation
 
-**Online retraining is now ENABLED by default** with aggressive memory optimizations.
+**❌ Online retraining is NOT compatible with Streamlit Cloud** due to PyTorch/asyncio conflicts.
 
-### Online Retraining Mode (DEFAULT - Optimized)
-- ✅ Retrains every 5 entries automatically
-- 🔧 Ultra-low timesteps (200) for cloud stability
-- 🧹 Aggressive memory cleanup (garbage collection + PyTorch cache clearing)
-- ✅ Model continuously improves from real data
-- ⚠️ Monitor for stability in constrained environments
+### Current Status
+- 🚫 **Online retraining DISABLED by default** (causes segmentation faults)
+- ✅ **Data collection ENABLED** - All patient data saved automatically
+- ✅ **Offline retraining RECOMMENDED** - Stable and reliable
 
-### Data Collection Only Mode (Conservative)
-- ✅ 100% stable, zero crashes
-- ✅ Data collected for offline retraining
-- ✅ Use if online retraining causes issues
+### Why Online Retraining Fails
+The error `torch.classes RuntimeError` and subsequent segmentation faults occur because:
+- PyTorch's RL training uses multiprocessing
+- Streamlit Cloud's file watcher conflicts with PyTorch modules
+- `model.learn()` triggers segmentation faults even with optimizations
+- No amount of memory cleanup prevents this fundamental incompatibility
 
-**To DISABLE online retraining on Streamlit Cloud:**
-1. Go to app Settings > Secrets
-2. Add: `ENABLE_RETRAINING = "false"`
-3. App will only collect data
+### Recommended Workflow (Stable)
+1. ✅ **Deploy with retraining disabled** (default)
+2. ✅ **Collect patient data** - Saves to `test_records.csv`
+3. ✅ **Download data every 20-50 patients**
+4. ✅ **Retrain offline** using local machine
+5. ✅ **Deploy updated model** to Streamlit Cloud
 
-**To disable locally:**
+### Offline Retraining (RECOMMENDED)
+See **[RETRAINING_GUIDE.md](RETRAINING_GUIDE.md)** for step-by-step instructions on:
+- Downloading trial data
+- Retraining model locally
+- Deploying updated model
+
+### For Advanced Users: Local Development Only
+Online retraining works on **local machines** with adequate resources:
 ```bash
 # Windows PowerShell
-$env:ENABLE_RETRAINING="false"
+$env:ENABLE_RETRAINING="true"
 streamlit run Home.py
 
 # Linux/Mac
-export ENABLE_RETRAINING=false
+export ENABLE_RETRAINING=true
 streamlit run Home.py
 ```
-
-For offline retraining (most stable), see **[RETRAINING_GUIDE.md](RETRAINING_GUIDE.md)**.
+⚠️ **DO NOT enable on Streamlit Cloud** - will crash immediately.
 
 ## 📈 Data Export
 

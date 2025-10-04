@@ -4,24 +4,37 @@ import pandas as pd
 import joblib
 import os
 import gc
+import sys
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 from datetime import datetime
 import gymnasium as gym  # Updated to Gymnasium
 from gymnasium import spaces
-import torch
 
-# CONFIGURATION: Online retraining ENABLED by default with memory optimizations
-# To disable: Set ENABLE_RETRAINING=false in environment or secrets.toml
-ENABLE_RETRAINING = os.getenv('ENABLE_RETRAINING', 'True').lower() == 'true'
+# Lazy import torch to avoid Streamlit file watcher issues
+try:
+    import torch
+except Exception:
+    torch = None
+
+# CONFIGURATION: Online retraining DISABLED due to Streamlit Cloud incompatibility
+# PyTorch RL training causes segmentation faults in cloud environments
+# Use offline retraining instead (see RETRAINING_GUIDE.md)
+ENABLE_RETRAINING = os.getenv('ENABLE_RETRAINING', 'False').lower() == 'true'
+
+# Warn if torch import failed
+if ENABLE_RETRAINING and torch is None:
+    st.error("⚠️ PyTorch not available. Online retraining disabled.")
+    ENABLE_RETRAINING = False
 
 st.title("Clinical Malaria Prediction - Trial Mode")
 
 # Display deployment status
 if ENABLE_RETRAINING:
-    st.warning("⚠️ Online retraining is ENABLED - may be unstable in cloud deployment")
+    st.error("🚨 WARNING: Online retraining ENABLED - WILL CRASH on Streamlit Cloud!")
+    st.error("💥 Expect segmentation faults. Use ENABLE_RETRAINING=false")
 else:
-    st.success("✅ Running in stable mode - Data collection enabled for clinical trials")
+    st.success("✅ Stable mode - Data collection enabled. Model retraining available offline.")
 
 # File paths
 MODEL_PATH = 'models/ppo_malaria2'  # Ensure it matches the training script
@@ -120,7 +133,7 @@ def retrain_model():
             del env
             
             # Clear PyTorch cache if using CUDA
-            if torch.cuda.is_available():
+            if torch and torch.cuda.is_available():
                 torch.cuda.empty_cache()
             
             # Force Python garbage collection
@@ -136,7 +149,7 @@ def retrain_model():
             # Clean up on error
             try:
                 gc.collect()
-                if torch.cuda.is_available():
+                if torch and torch.cuda.is_available():
                     torch.cuda.empty_cache()
             except:
                 pass
