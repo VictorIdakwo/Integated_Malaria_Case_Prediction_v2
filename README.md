@@ -92,14 +92,27 @@ streamlit run Home.py
 - Nausea
 - Diarrhea
 
-## 🔒 Important: Online Retraining
+## 🔒 Online Retraining Options
 
-**Online retraining is DISABLED by default** to prevent crashes on Streamlit Cloud.
+**Online retraining is DISABLED by default** but can be enabled with optimizations.
 
-- ✅ **Production Mode**: Data collection only (stable)
-- ⚠️ **Development Mode**: Enable retraining locally only
+### Production Mode (Recommended - Stable)
+- ✅ Data collection only
+- ✅ No crashes
+- ✅ Retrain offline periodically
 
-To enable retraining (local development):
+### Online Retraining Mode (Optimized)
+- ⚠️ Retrains every 5 entries automatically
+- 🔧 Ultra-low timesteps (200) for cloud stability
+- 🧹 Aggressive memory cleanup (garbage collection + PyTorch cache clearing)
+- ⚡ May still be unstable on very constrained environments
+
+**To enable on Streamlit Cloud:**
+1. Go to app Settings > Secrets
+2. Add: `ENABLE_RETRAINING = "true"`
+3. Monitor for stability
+
+**To enable locally:**
 ```bash
 # Windows PowerShell
 $env:ENABLE_RETRAINING="true"
@@ -110,7 +123,7 @@ export ENABLE_RETRAINING=true
 streamlit run Home.py
 ```
 
-For model updates, see **[RETRAINING_GUIDE.md](RETRAINING_GUIDE.md)** for offline retraining procedures.
+For offline retraining (most stable), see **[RETRAINING_GUIDE.md](RETRAINING_GUIDE.md)**.
 
 ## 📈 Data Export
 

@@ -3,14 +3,16 @@ import numpy as np
 import pandas as pd
 import joblib
 import os
+import gc
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 from datetime import datetime
 import gymnasium as gym  # Updated to Gymnasium
 from gymnasium import spaces
+import torch
 
-# CONFIGURATION: Disable online retraining to prevent segmentation faults in Streamlit Cloud
-# Set to True only for local development with sufficient resources
+# CONFIGURATION: Online retraining can be enabled but requires careful memory management
+# For Streamlit Cloud: Set ENABLE_RETRAINING=true in secrets.toml
 ENABLE_RETRAINING = os.getenv('ENABLE_RETRAINING', 'False').lower() == 'true'
 
 st.title("Clinical Malaria Prediction - Trial Mode")
@@ -103,24 +105,41 @@ def retrain_model():
             X_df = pd.DataFrame(X, columns=features)  # Convert to DataFrame
             X_scaled = scaler.transform(X_df)  # Scale features
 
-            # Set up RL environment with reduced timesteps to prevent memory issues
+            # Set up RL environment with minimal timesteps for cloud stability
             env = DummyVecEnv([lambda: MalariaEnv()])
             model.set_env(env)
             
-            # Reduced timesteps to prevent segmentation fault
-            model.learn(total_timesteps=500)  # Reduced from 1000
+            # Ultra-low timesteps for cloud deployment (200 instead of 500/1000)
+            # This reduces memory pressure significantly
+            model.learn(total_timesteps=200, progress_bar=False)
 
             model.save(MODEL_PATH)
             
-            # Clean up resources
+            # Aggressive resource cleanup to prevent memory leaks
             env.close()
             del env
             
-            st.success(f"Model retrained successfully after {len(df)} samples!")
+            # Clear PyTorch cache if using CUDA
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            # Force Python garbage collection
+            gc.collect()
+            
+            st.success(f"✅ Model retrained successfully after {len(df)} samples!")
+            st.info("💾 Memory cleaned up to prevent crashes.")
             
         except Exception as e:
-            st.error(f"Error during retraining: {str(e)}")
-            st.warning("Prediction will continue with the existing model.")
+            st.error(f"❌ Error during retraining: {str(e)}")
+            st.warning("⚠️ Prediction will continue with the existing model.")
+            
+            # Clean up on error
+            try:
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except:
+                pass
 
 # Initialize session state
 if 'patient_id' not in st.session_state:
