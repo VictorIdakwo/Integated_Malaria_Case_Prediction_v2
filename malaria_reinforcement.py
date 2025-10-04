@@ -11,9 +11,9 @@ import gymnasium as gym  # Updated to Gymnasium
 from gymnasium import spaces
 import torch
 
-# CONFIGURATION: Online retraining can be enabled but requires careful memory management
-# For Streamlit Cloud: Set ENABLE_RETRAINING=true in secrets.toml
-ENABLE_RETRAINING = os.getenv('ENABLE_RETRAINING', 'False').lower() == 'true'
+# CONFIGURATION: Online retraining ENABLED by default with memory optimizations
+# To disable: Set ENABLE_RETRAINING=false in environment or secrets.toml
+ENABLE_RETRAINING = os.getenv('ENABLE_RETRAINING', 'True').lower() == 'true'
 
 st.title("Clinical Malaria Prediction - Trial Mode")
 

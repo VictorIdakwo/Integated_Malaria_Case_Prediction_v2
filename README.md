@@ -94,32 +94,33 @@ streamlit run Home.py
 
 ## 🔒 Online Retraining Options
 
-**Online retraining is DISABLED by default** but can be enabled with optimizations.
+**Online retraining is now ENABLED by default** with aggressive memory optimizations.
 
-### Production Mode (Recommended - Stable)
-- ✅ Data collection only
-- ✅ No crashes
-- ✅ Retrain offline periodically
-
-### Online Retraining Mode (Optimized)
-- ⚠️ Retrains every 5 entries automatically
+### Online Retraining Mode (DEFAULT - Optimized)
+- ✅ Retrains every 5 entries automatically
 - 🔧 Ultra-low timesteps (200) for cloud stability
 - 🧹 Aggressive memory cleanup (garbage collection + PyTorch cache clearing)
-- ⚡ May still be unstable on very constrained environments
+- ✅ Model continuously improves from real data
+- ⚠️ Monitor for stability in constrained environments
 
-**To enable on Streamlit Cloud:**
+### Data Collection Only Mode (Conservative)
+- ✅ 100% stable, zero crashes
+- ✅ Data collected for offline retraining
+- ✅ Use if online retraining causes issues
+
+**To DISABLE online retraining on Streamlit Cloud:**
 1. Go to app Settings > Secrets
-2. Add: `ENABLE_RETRAINING = "true"`
-3. Monitor for stability
+2. Add: `ENABLE_RETRAINING = "false"`
+3. App will only collect data
 
-**To enable locally:**
+**To disable locally:**
 ```bash
 # Windows PowerShell
-$env:ENABLE_RETRAINING="true"
+$env:ENABLE_RETRAINING="false"
 streamlit run Home.py
 
 # Linux/Mac
-export ENABLE_RETRAINING=true
+export ENABLE_RETRAINING=false
 streamlit run Home.py
 ```
 
@@ -142,12 +143,14 @@ Download options:
 ## 🐛 Troubleshooting
 
 ### App crashes after multiple entries
-- ✅ **Fixed in v2.0** - Online retraining disabled by default
-- Verify deployment shows: "✅ Running in stable mode"
+- ✅ **Optimized in v2.0** - Ultra-low timesteps + aggressive memory cleanup
+- If crashes persist, disable retraining: `ENABLE_RETRAINING=false`
+- Verify deployment shows warning banner if enabled
 
 ### Segmentation fault errors
-- Caused by `ENABLE_RETRAINING=true` on cloud
-- Keep disabled for production
+- Now includes memory cleanup to prevent this
+- If still occurring, set `ENABLE_RETRAINING=false`
+- Consider offline retraining instead
 
 ### Data not saving
 - Check internet connection
